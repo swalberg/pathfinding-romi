@@ -37,7 +37,7 @@ public class RobotContainer {
    */
   private void configureButtonBindings() {
     m_romiDrivetrain.setDefaultCommand(
-        new RunCommand(() -> m_romiDrivetrain.arcadeDrive(-joystick.getY(), joystick.getX()), m_romiDrivetrain));
+        new RunCommand(() -> m_romiDrivetrain.arcadeDrive(-joystick.getY(), -joystick.getX()), m_romiDrivetrain));
   }
 
   /**

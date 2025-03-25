@@ -84,7 +84,6 @@ public class RomiDrivetrain extends SubsystemBase {
       field.getObject("path").setPoses(poses);
     });
 
-
     // Configure AutoBuilder last
     AutoBuilder.configure(
         this::getCurrentPose, // Robot pose supplier
@@ -109,7 +108,7 @@ public class RomiDrivetrain extends SubsystemBase {
           return false;
         },
         this // Reference to this subsystem to set requirements
-    );
+    ); 
   }
 
   /**
