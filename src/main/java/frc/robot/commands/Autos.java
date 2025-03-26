@@ -10,14 +10,27 @@ import com.pathplanner.lib.path.Waypoint;
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj2.command.Command;
+import frc.robot.subsystems.RomiDrivetrain;
 
 public class Autos {
     public static Command driveStraightPath() {
+        PathConstraints constraints = new PathConstraints(
+            3, 4.0,
+            3, Units.degreesToRadians(720));
+    
+        // Since AutoBuilder is configured, we can use it to build pathfinding commands
+        return AutoBuilder.pathfindToPose(
+            new Pose2d(0, 1, new Rotation2d()),
+            constraints,
+            edu.wpi.first.units.Units.MetersPerSecond.of(0) // Goal end velocity in meters/sec
+        );
+    }
+
+    public static Command waypoints() {
         List<Waypoint> waypoints = PathPlannerPath.waypointsFromPoses(
-                new Pose2d(1.0, 1.0, Rotation2d.fromDegrees(0)),
-                new Pose2d(3.0, 1.0, Rotation2d.fromDegrees(0)),
-                new Pose2d(5.0, 3.0, Rotation2d.fromDegrees(90)));
+                new Pose2d(1.0, 1.0, Rotation2d.fromDegrees(0)));
 
         PathConstraints constraints = new PathConstraints(0.50, 1.0, 2 * Math.PI, 4 * Math.PI); // The constraints for
                                                                                                 // this path.

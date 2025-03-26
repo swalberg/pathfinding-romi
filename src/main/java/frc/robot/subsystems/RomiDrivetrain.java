@@ -4,8 +4,6 @@
 
 package frc.robot.subsystems;
 
-import java.lang.reflect.Field;
-
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPLTVController;
@@ -43,7 +41,7 @@ public class RomiDrivetrain extends SubsystemBase {
 
   // Kinematics helps us translate between the wheel speeds and the robot speeds
   DifferentialDriveKinematics kinematics = new DifferentialDriveKinematics(0.142);
-  DifferentialDriveOdometry m_odometry = new DifferentialDriveOdometry(Rotation2d.fromDegrees(gyro.getAngle()), m_leftEncoder.getDistance(), m_rightEncoder.getDistance(), new Pose2d());
+  DifferentialDriveOdometry m_odometry;
   // Set up the differential drive controller
   private final DifferentialDrive m_diffDrive = new DifferentialDrive(m_leftMotor::set, m_rightMotor::set);
 
@@ -58,7 +56,7 @@ public class RomiDrivetrain extends SubsystemBase {
     resetEncoders();
 
     SmartDashboard.putData(field);
-
+    m_odometry = new DifferentialDriveOdometry(getGyroAngle(), m_leftEncoder.getDistance(), m_rightEncoder.getDistance(), new Pose2d());
     // Invert right side since motor is flipped
     m_rightMotor.setInverted(true);
 
@@ -162,9 +160,8 @@ public class RomiDrivetrain extends SubsystemBase {
   @Override
   public void periodic() {
    // Get the rotation of the robot from the gyro.
-   var gyroAngle = Rotation2d.fromDegrees(gyro.getAngle());
    // Update the pose
-   currentPose = m_odometry.update(gyroAngle,
+   currentPose = m_odometry.update(getGyroAngle(),
      m_leftEncoder.getDistance(),
      m_rightEncoder.getDistance());
     // Update the Field2d object with the current pose
@@ -205,7 +202,11 @@ public class RomiDrivetrain extends SubsystemBase {
   }
 
   public void setCurrentPose(Pose2d currentPose) {
-    m_odometry.resetPosition(Rotation2d.fromDegrees(gyro.getAngle()), getLeftDistanceMeters(), getRightDistanceMeters(), currentPose);
+    m_odometry.resetPosition(getGyroAngle(), getLeftDistanceMeters(), getRightDistanceMeters(), currentPose);
     this.currentPose = currentPose;
   }
+
+  public Rotation2d getGyroAngle() {
+    return Rotation2d.fromDegrees(-gyro.getAngle());
+  } 
 }
