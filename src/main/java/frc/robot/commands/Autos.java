@@ -12,17 +12,16 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj2.command.Command;
-import frc.robot.subsystems.RomiDrivetrain;
 
 public class Autos {
     public static Command driveStraightPath() {
         PathConstraints constraints = new PathConstraints(
-            3, 4.0,
+            0.25, 0.25,
             3, Units.degreesToRadians(720));
     
         // Since AutoBuilder is configured, we can use it to build pathfinding commands
         return AutoBuilder.pathfindToPose(
-            new Pose2d(0, 1, new Rotation2d()),
+            new Pose2d(1, 0, new Rotation2d()),
             constraints,
             edu.wpi.first.units.Units.MetersPerSecond.of(0) // Goal end velocity in meters/sec
         );

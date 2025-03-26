@@ -9,6 +9,7 @@ import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPLTVController;
 import com.pathplanner.lib.util.PathPlannerLogging;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
@@ -90,7 +91,7 @@ public class RomiDrivetrain extends SubsystemBase {
         (speeds, feedforwards) -> driveRobotRelative(speeds), // Method that will drive the robot given ROBOT RELATIVE
                                                               // ChassisSpeeds. Also optionally outputs individual
                                                               // module feedforwards
-        new PPLTVController(0.02), // PPLTVController is the built in path following controller for differential
+        new PPLTVController(0.02, 0.6), // PPLTVController is the built in path following controller for differential
                                    // drive trains
         config, // The robot configuration
         () -> {
@@ -116,7 +117,9 @@ public class RomiDrivetrain extends SubsystemBase {
   public ChassisSpeeds getRobotRelativeSpeeds() {
     var leftSpeed = m_leftEncoder.getRate();
     var rightSpeed = m_rightEncoder.getRate();
-    return kinematics.toChassisSpeeds(new DifferentialDriveWheelSpeeds(leftSpeed, rightSpeed));
+    var speeds = kinematics.toChassisSpeeds(new DifferentialDriveWheelSpeeds(leftSpeed, rightSpeed));
+    SmartDashboard.putNumber("getRobotRelativeSpeeds/x", speeds.vxMetersPerSecond);
+    return speeds;
   }
 
   /**
@@ -128,7 +131,11 @@ public class RomiDrivetrain extends SubsystemBase {
    *               meters per second
    */
   public void driveRobotRelative(ChassisSpeeds speeds) {
-    m_diffDrive.arcadeDrive(speeds.vxMetersPerSecond, speeds.omegaRadiansPerSecond);
+    double maxSpeed = 0.6;
+    double scaled = speeds.vxMetersPerSecond / maxSpeed;
+    m_diffDrive.arcadeDrive(MathUtil.clamp(scaled, -1.0, 1.0), speeds.omegaRadiansPerSecond);
+    SmartDashboard.putNumber("driveRobotRelative/x", speeds.vxMetersPerSecond);
+    SmartDashboard.putNumber("driveRobotRelative/omega", speeds.omegaRadiansPerSecond);
   }
 
   /**
@@ -166,6 +173,8 @@ public class RomiDrivetrain extends SubsystemBase {
      m_rightEncoder.getDistance());
     // Update the Field2d object with the current pose
     field.setRobotPose(currentPose);
+    SmartDashboard.putNumber("Left Encoder", m_leftEncoder.getRate());
+    SmartDashboard.putNumber("Right Encoder", m_rightEncoder.getRate());
   }
 
   @Override
