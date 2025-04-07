@@ -10,6 +10,8 @@ import com.pathplanner.lib.controllers.PPLTVController;
 import com.pathplanner.lib.util.PathPlannerLogging;
 
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.controller.SimpleMotorFeedforward;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
@@ -24,6 +26,7 @@ import edu.wpi.first.wpilibj.romi.RomiGyro;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.util.Vision;
 
 public class RomiDrivetrain extends SubsystemBase {
   private final RomiGyro gyro = new RomiGyro();
@@ -40,6 +43,10 @@ public class RomiDrivetrain extends SubsystemBase {
   private final Encoder m_leftEncoder = new Encoder(4, 5);
   private final Encoder m_rightEncoder = new Encoder(6, 7);
 
+  private final PIDController forwardPID = new PIDController(0.4, 0.0, 0.03);
+  private final SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(0.8, 0.2, 0.0);
+  private final PIDController anglePID = new PIDController(1.0, 0.0, 0.0);
+
   // Kinematics helps us translate between the wheel speeds and the robot speeds
   DifferentialDriveKinematics kinematics = new DifferentialDriveKinematics(0.142);
   DifferentialDriveOdometry m_odometry;
@@ -49,6 +56,7 @@ public class RomiDrivetrain extends SubsystemBase {
   private Pose2d currentPose = new Pose2d();
   private Field2d field = new Field2d();
 
+  private Vision vision;
   /** Creates a new RomiDrivetrain. */
   public RomiDrivetrain() {
     // Use meters as unit for encoder distances
@@ -60,6 +68,8 @@ public class RomiDrivetrain extends SubsystemBase {
     m_odometry = new DifferentialDriveOdometry(getGyroAngle(), m_leftEncoder.getDistance(), m_rightEncoder.getDistance(), new Pose2d());
     // Invert right side since motor is flipped
     m_rightMotor.setInverted(true);
+
+    vision = new Vision();
 
     // Load the RobotConfig from the GUI settings. You should probably
     // store this in your Constants file
@@ -131,11 +141,17 @@ public class RomiDrivetrain extends SubsystemBase {
    *               meters per second
    */
   public void driveRobotRelative(ChassisSpeeds speeds) {
-    double maxSpeed = 0.6;
-    double scaled = speeds.vxMetersPerSecond / maxSpeed;
-    m_diffDrive.arcadeDrive(MathUtil.clamp(scaled, -1.0, 1.0), speeds.omegaRadiansPerSecond);
+    var measured = getRobotRelativeSpeeds();
+
+    double vx = forwardPID.calculate(measured.vxMetersPerSecond, speeds.vxMetersPerSecond) + feedforward.calculate(speeds.vxMetersPerSecond);
+    double angle = anglePID.calculate(measured.omegaRadiansPerSecond, speeds.omegaRadiansPerSecond);
+
     SmartDashboard.putNumber("driveRobotRelative/x", speeds.vxMetersPerSecond);
     SmartDashboard.putNumber("driveRobotRelative/omega", speeds.omegaRadiansPerSecond);
+    SmartDashboard.putNumber("driveRobotRelative/xActual", vx);
+    SmartDashboard.putNumber("driveRobotRelative/omegaActual", speeds.omegaRadiansPerSecond);
+
+    m_diffDrive.arcadeDrive(MathUtil.clamp(vx, -1.0, 1.0), angle);
   }
 
   /**
@@ -166,6 +182,14 @@ public class RomiDrivetrain extends SubsystemBase {
 
   @Override
   public void periodic() {
+   // Present the PID settings to SmartDashboard so we can tweak them
+   forwardPID.setP(SmartDashboard.getNumber("forwardPID/P", 0.4));
+   forwardPID.setD(SmartDashboard.getNumber("forwardPID/D", 0.0));
+   forwardPID.setI(SmartDashboard.getNumber("forwardPID/I", 0.0));
+   feedforward.setKs(SmartDashboard.getNumber("feedforward/Ks", 0.8));
+   feedforward.setKv(SmartDashboard.getNumber("feedforward/Kv", 0.2));
+   feedforward.setKa(SmartDashboard.getNumber("feedforward/Ka", 0.0));
+
    // Get the rotation of the robot from the gyro.
    // Update the pose
    currentPose = m_odometry.update(getGyroAngle(),
