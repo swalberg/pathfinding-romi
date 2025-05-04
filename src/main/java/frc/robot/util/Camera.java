@@ -6,6 +6,7 @@ package frc.robot.util;
 
 import java.util.Optional;
 
+import org.photonvision.EstimatedRobotPose;
 import org.photonvision.PhotonCamera;
 import org.photonvision.targeting.PhotonTrackedTarget;
 
@@ -35,6 +36,21 @@ public class Camera {
 
         PhotonTrackedTarget target = results.getBestTarget();
         return Optional.of(target);
+    }
+
+    /**
+     * Returns the estimated global pose that this camera sees (if any)
+     */
+    public Optional<EstimatedRobotPose> getEstimatedGlobalPose() {
+        var results = camera.getLatestResult();
+        if (results.hasTargets() == false) {
+            return Optional.empty();
+        }
+
+        PhotonTrackedTarget target = results.getBestTarget();
+        var cameraToTarget = target.getBestCameraToTarget();
+        Pose3d robotToTarget = robotToCamera.transformBy(cameraToTarget.inverse());
+        return Optional.empty();
     }
 
 }

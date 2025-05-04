@@ -20,7 +20,6 @@ import edu.wpi.first.math.kinematics.DifferentialDriveOdometry;
 import edu.wpi.first.math.kinematics.DifferentialDriveWheelSpeeds;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Encoder;
-import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.motorcontrol.Spark;
 import edu.wpi.first.wpilibj.romi.RomiGyro;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
@@ -28,60 +27,60 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.util.Vision;
 
-public class RomiDrivetrain extends SubsystemBase {
+public class RomiDrivetrain extends SubsystemBase implements AutoCloseable {
+  private static final double MAX_SPEED = 0.5;
   private final RomiGyro gyro = new RomiGyro();
   private static final double kCountsPerRevolution = 1440.0;
   private static final double kWheelDiameterMeters = 0.070;
 
   // The Romi has the left and right motors set to
   // PWM channels 0 and 1 respectively
-  private final Spark m_leftMotor = new Spark(0);
-  private final Spark m_rightMotor = new Spark(1);
+  private final Spark leftMotor = new Spark(0);
+  private final Spark rightMotor = new Spark(1);
 
   // The Romi has onboard encoders that are hardcoded
   // to use DIO pins 4/5 and 6/7 for the left and right
-  private final Encoder m_leftEncoder = new Encoder(4, 5);
-  private final Encoder m_rightEncoder = new Encoder(6, 7);
+  private final Encoder leftEncoder = new Encoder(4, 5);
+  private final Encoder rightEncoder = new Encoder(6, 7);
 
-  private final PIDController forwardPID = new PIDController(0.4, 0.0, 0.03);
+  private final PIDController leftPID = new PIDController(0.4, 0.0, 0.03);
+  private final PIDController rightPID = new PIDController(0.4, 0.0, 0.03);
   private final SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(0.8, 0.2, 0.0);
-  private final PIDController anglePID = new PIDController(1.0, 0.0, 0.0);
 
   // Kinematics helps us translate between the wheel speeds and the robot speeds
   DifferentialDriveKinematics kinematics = new DifferentialDriveKinematics(0.142);
-  DifferentialDriveOdometry m_odometry;
-  // Set up the differential drive controller
-  private final DifferentialDrive m_diffDrive = new DifferentialDrive(m_leftMotor::set, m_rightMotor::set);
+  DifferentialDriveOdometry odometry;
 
   private Pose2d currentPose = new Pose2d();
   private Field2d field = new Field2d();
 
   private Vision vision;
+
   /** Creates a new RomiDrivetrain. */
   public RomiDrivetrain() {
+    // debugging the drive train PID
+    SmartDashboard.putNumber("forwardPID/P", 0.4);
+    SmartDashboard.putNumber("forwardPID/D", 0.0);
+    SmartDashboard.putNumber("forwardPID/I", 0.0);
+    SmartDashboard.putNumber("feedforward/Ks", 0.8);
+    SmartDashboard.putNumber("feedforward/Kv", 0.2);
+    SmartDashboard.putNumber("feedforward/Ka", 0.0);
+
     // Use meters as unit for encoder distances
-    m_leftEncoder.setDistancePerPulse((Math.PI * kWheelDiameterMeters) / kCountsPerRevolution);
-    m_rightEncoder.setDistancePerPulse((Math.PI * kWheelDiameterMeters) / kCountsPerRevolution);
+    leftEncoder.setDistancePerPulse((Math.PI * kWheelDiameterMeters) / kCountsPerRevolution);
+    rightEncoder.setDistancePerPulse((Math.PI * kWheelDiameterMeters) / kCountsPerRevolution);
     resetEncoders();
 
     SmartDashboard.putData(field);
-    m_odometry = new DifferentialDriveOdometry(getGyroAngle(), m_leftEncoder.getDistance(), m_rightEncoder.getDistance(), new Pose2d());
+    odometry = new DifferentialDriveOdometry(getGyroAngle(), leftEncoder.getDistance(), rightEncoder.getDistance(),
+        new Pose2d());
     // Invert right side since motor is flipped
-    m_rightMotor.setInverted(true);
+    rightMotor.setInverted(true);
 
     vision = new Vision();
 
-    // Load the RobotConfig from the GUI settings. You should probably
-    // store this in your Constants file
-    RobotConfig config = null;
-    try {
-      config = RobotConfig.fromGUISettings();
-    } catch (Exception e) {
-      // Handle exception as needed
-      e.printStackTrace();
-    }
 
-     // Logging callback for target robot pose
+    // Logging callback for target robot pose
     PathPlannerLogging.setLogTargetPoseCallback((pose) -> {
       // Do whatever you want with the pose here
       field.getObject("target pose").setPose(pose);
@@ -93,7 +92,23 @@ public class RomiDrivetrain extends SubsystemBase {
       field.getObject("path").setPoses(poses);
     });
 
-    // Configure AutoBuilder last
+    configureAutoBuilder();
+  }
+
+  private void configureAutoBuilder() {
+    if (AutoBuilder.isConfigured()) {
+      // AutoBuilder is already configured, no need to do it again
+      return;
+    }
+    // Load the RobotConfig from the GUI settings. You should probably
+    // store this in your Constants file
+    RobotConfig config = null;
+    try {
+      config = RobotConfig.fromGUISettings();
+    } catch (Exception e) {
+      // Handle exception as needed
+      e.printStackTrace();
+    }
     AutoBuilder.configure(
         this::getCurrentPose, // Robot pose supplier
         this::setCurrentPose, // Method to reset odometry (will be called if your auto has a starting pose)
@@ -101,8 +116,8 @@ public class RomiDrivetrain extends SubsystemBase {
         (speeds, feedforwards) -> driveRobotRelative(speeds), // Method that will drive the robot given ROBOT RELATIVE
                                                               // ChassisSpeeds. Also optionally outputs individual
                                                               // module feedforwards
-        new PPLTVController(0.02, 0.6), // PPLTVController is the built in path following controller for differential
-                                   // drive trains
+        new PPLTVController(0.02, MAX_SPEED), // PPLTVController is the built in path following controller for differential
+        // drive trains
         config, // The robot configuration
         () -> {
           // Boolean supplier that controls when the path will be mirrored for the red
@@ -117,16 +132,18 @@ public class RomiDrivetrain extends SubsystemBase {
           return false;
         },
         this // Reference to this subsystem to set requirements
-    ); 
+    );
   }
 
   /**
    * Get the current robot speeds off the encoders
-   * @return a ChassisSpeeds object representing the speed of the robot in meters per second
+   * 
+   * @return a ChassisSpeeds object representing the speed of the robot in meters
+   *         per second
    */
   public ChassisSpeeds getRobotRelativeSpeeds() {
-    var leftSpeed = m_leftEncoder.getRate();
-    var rightSpeed = m_rightEncoder.getRate();
+    var leftSpeed = leftEncoder.getRate();
+    var rightSpeed = rightEncoder.getRate();
     var speeds = kinematics.toChassisSpeeds(new DifferentialDriveWheelSpeeds(leftSpeed, rightSpeed));
     SmartDashboard.putNumber("getRobotRelativeSpeeds/x", speeds.vxMetersPerSecond);
     return speeds;
@@ -141,17 +158,34 @@ public class RomiDrivetrain extends SubsystemBase {
    *               meters per second
    */
   public void driveRobotRelative(ChassisSpeeds speeds) {
-    var measured = getRobotRelativeSpeeds();
+    // concert the chassis speeds to wheel speeds
+    var wheelSpeeds = kinematics.toWheelSpeeds(speeds);
+    // limit the wheel speeds to the max speed
+    wheelSpeeds.leftMetersPerSecond = MathUtil.clamp(wheelSpeeds.leftMetersPerSecond, -MAX_SPEED, MAX_SPEED);
+    wheelSpeeds.rightMetersPerSecond = MathUtil.clamp(wheelSpeeds.rightMetersPerSecond, -MAX_SPEED, MAX_SPEED);
+    // set the wheel speeds
+    setSpeeds(wheelSpeeds);
+  }
 
-    double vx = forwardPID.calculate(measured.vxMetersPerSecond, speeds.vxMetersPerSecond) + feedforward.calculate(speeds.vxMetersPerSecond);
-    double angle = anglePID.calculate(measured.omegaRadiansPerSecond, speeds.omegaRadiansPerSecond);
-
-    SmartDashboard.putNumber("driveRobotRelative/x", speeds.vxMetersPerSecond);
-    SmartDashboard.putNumber("driveRobotRelative/omega", speeds.omegaRadiansPerSecond);
-    SmartDashboard.putNumber("driveRobotRelative/xActual", vx);
-    SmartDashboard.putNumber("driveRobotRelative/omegaActual", speeds.omegaRadiansPerSecond);
-
-    m_diffDrive.arcadeDrive(MathUtil.clamp(vx, -1.0, 1.0), angle);
+  /**
+   * Set the speeds of the left and right motors using PIDF control
+   * 
+   * @param speeds a DifferentialDriveWheelSpeeds object representing the speed of
+   *               the left and right motors in meters per second
+   */
+  public void setSpeeds(DifferentialDriveWheelSpeeds speeds) {
+    final double leftFeedforward = feedforward.calculate(speeds.leftMetersPerSecond);
+    final double rightFeedforward = feedforward.calculate(speeds.rightMetersPerSecond);
+    final double leftOutput = leftPID.calculate(leftEncoder.getRate(), speeds.leftMetersPerSecond);
+    final double rightOutput = rightPID.calculate(rightEncoder.getRate(), speeds.rightMetersPerSecond);
+    SmartDashboard.putNumber("setSpeeds/leftRequestedSpeed", speeds.leftMetersPerSecond);
+    SmartDashboard.putNumber("setSpeeds/rightRequestedSpeed", speeds.rightMetersPerSecond);
+    SmartDashboard.putNumber("setSpeeds/leftOutput", leftOutput);
+    SmartDashboard.putNumber("setSpeeds/rightOutput", rightOutput);
+    SmartDashboard.putNumber("setSpeeds/leftFeedforward", leftFeedforward);
+    SmartDashboard.putNumber("setSpeeds/rightFeedforward", rightFeedforward);
+    leftMotor.set(leftOutput + leftFeedforward);
+    rightMotor.set(rightOutput + rightFeedforward);
   }
 
   /**
@@ -164,41 +198,67 @@ public class RomiDrivetrain extends SubsystemBase {
    * @param zaxisRotate the rotation rate of the robot in motor % units (-1 to 1)
    */
   public void arcadeDrive(double xaxisSpeed, double zaxisRotate) {
-    m_diffDrive.arcadeDrive(xaxisSpeed, zaxisRotate);
+    SmartDashboard.putNumber("arcadeDrive/xaxisSpeed", xaxisSpeed);
+    SmartDashboard.putNumber("arcadeDrive/zaxisRotate", zaxisRotate);
+    // convert the xaxis speed and zaxis rotate to wheel speeds
+    // TODO: If we're 100% forward and turning, does the robot actually turn?
+    zaxisRotate = MathUtil.applyDeadband(zaxisRotate, 0.02);
+    xaxisSpeed = MathUtil.applyDeadband(xaxisSpeed, 0.02);
+
+    var speeds = kinematics
+        .toWheelSpeeds(new ChassisSpeeds(xaxisSpeed * MAX_SPEED, 0, zaxisRotate));
+    setSpeeds(speeds);
   }
 
+  /**
+   * Reset the encoders to zero.
+   */
   public void resetEncoders() {
-    m_leftEncoder.reset();
-    m_rightEncoder.reset();
+    leftEncoder.reset();
+    rightEncoder.reset();
   }
 
+  /**
+   * Get the distance traveled by the left encoder in meters
+   * 
+   * @return the distance traveled by the left encoder in meters
+   */
   public double getLeftDistanceMeters() {
-    return m_leftEncoder.getDistance();
+    return leftEncoder.getDistance();
   }
 
+  /**
+   * Get the distance traveled by the right encoder in meters
+   * 
+   * @return the distance traveled by the right encoder in meters
+   */
   public double getRightDistanceMeters() {
-    return m_rightEncoder.getDistance();
+    return rightEncoder.getDistance();
   }
 
   @Override
   public void periodic() {
-   // Present the PID settings to SmartDashboard so we can tweak them
-   forwardPID.setP(SmartDashboard.getNumber("forwardPID/P", 0.4));
-   forwardPID.setD(SmartDashboard.getNumber("forwardPID/D", 0.0));
-   forwardPID.setI(SmartDashboard.getNumber("forwardPID/I", 0.0));
-   feedforward.setKs(SmartDashboard.getNumber("feedforward/Ks", 0.8));
-   feedforward.setKv(SmartDashboard.getNumber("feedforward/Kv", 0.2));
-   feedforward.setKa(SmartDashboard.getNumber("feedforward/Ka", 0.0));
+    // Present the PID settings to SmartDashboard so we can tweak them
+    leftPID.setP(SmartDashboard.getNumber("forwardPID/P", 0.4));
+    leftPID.setD(SmartDashboard.getNumber("forwardPID/D", 0.0));
+    leftPID.setI(SmartDashboard.getNumber("forwardPID/I", 0.0));
+    rightPID.setP(SmartDashboard.getNumber("forwardPID/P", 0.4));
+    rightPID.setD(SmartDashboard.getNumber("forwardPID/D", 0.0));
+    rightPID.setI(SmartDashboard.getNumber("forwardPID/I", 0.0));
 
-   // Get the rotation of the robot from the gyro.
-   // Update the pose
-   currentPose = m_odometry.update(getGyroAngle(),
-     m_leftEncoder.getDistance(),
-     m_rightEncoder.getDistance());
+    feedforward.setKs(SmartDashboard.getNumber("feedforward/Ks", 0.8));
+    feedforward.setKv(SmartDashboard.getNumber("feedforward/Kv", 0.2));
+    feedforward.setKa(SmartDashboard.getNumber("feedforward/Ka", 0.0));
+
+    // Get the rotation of the robot from the gyro.
+    // Update the pose
+    currentPose = odometry.update(getGyroAngle(),
+        leftEncoder.getDistance(),
+        rightEncoder.getDistance());
     // Update the Field2d object with the current pose
     field.setRobotPose(currentPose);
-    SmartDashboard.putNumber("Left Encoder", m_leftEncoder.getRate());
-    SmartDashboard.putNumber("Right Encoder", m_rightEncoder.getRate());
+    SmartDashboard.putNumber("Left Encoder", leftEncoder.getRate());
+    SmartDashboard.putNumber("Right Encoder", rightEncoder.getRate());
   }
 
   @Override
@@ -206,40 +266,35 @@ public class RomiDrivetrain extends SubsystemBase {
     // This method will be called once per scheduler run during simulation
   }
 
-  public static double getKcountsperrevolution() {
-    return kCountsPerRevolution;
-  }
-
-  public static double getKwheeldiametermeters() {
-    return kWheelDiameterMeters;
-  }
-
-  public Spark getM_leftMotor() {
-    return m_leftMotor;
-  }
-
-  public Spark getM_rightMotor() {
-    return m_rightMotor;
-  }
-
-  public Encoder getM_leftEncoder() {
-    return m_leftEncoder;
-  }
-
-  public Encoder getM_rightEncoder() {
-    return m_rightEncoder;
-  }
-
+  /**
+   * Get the current pose of the robot
+   * 
+   * @return Pose2d object representing the current pose of the robot
+   */
   public Pose2d getCurrentPose() {
     return currentPose;
   }
 
   public void setCurrentPose(Pose2d currentPose) {
-    m_odometry.resetPosition(getGyroAngle(), getLeftDistanceMeters(), getRightDistanceMeters(), currentPose);
+    odometry.resetPosition(getGyroAngle(), getLeftDistanceMeters(), getRightDistanceMeters(), currentPose);
     this.currentPose = currentPose;
   }
 
+  /**
+   * Get the current angle of the robot. Counter-clockwise increasing
+   * 
+   * @return Rotation2d object representing the current angle of the robot
+   */
   public Rotation2d getGyroAngle() {
     return Rotation2d.fromDegrees(-gyro.getAngle());
-  } 
+  }
+
+  @Override
+  public void close() {
+    gyro.close();
+    leftMotor.close();
+    rightMotor.close();
+    leftEncoder.close();
+    rightEncoder.close(); 
+  }
 }
