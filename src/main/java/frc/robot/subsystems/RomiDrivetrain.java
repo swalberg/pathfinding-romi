@@ -26,7 +26,40 @@ import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.util.Vision;
+import frc.robot.Constants.DriveConstants;
 
+/**
+ * The RomiDrivetrain class represents the drivetrain subsystem of the Romi robot.
+ * It provides methods for controlling the robot's movement, including autonomous
+ * and teleoperated driving, as well as managing odometry and sensor data.
+ * 
+ * <p>This class includes:
+ * <ul>
+ *   <li>Encoders for measuring wheel distances and speeds</li>
+ *   <li>A gyro for measuring the robot's orientation</li>
+ *   <li>PID controllers and feedforward for precise motor control</li>
+ *   <li>Odometry for tracking the robot's position on the field</li>
+ *   <li>Integration with PathPlanner for autonomous path following</li>
+ * </ul>
+ * 
+ * <p>Key features:
+ * <ul>
+ *   <li>Robot-relative and field-relative driving capabilities</li>
+ *   <li>Arcade drive for teleoperated control</li>
+ *   <li>Real-time tuning of PID and feedforward parameters via SmartDashboard</li>
+ *   <li>Visualization of robot pose and paths on a Field2d object</li>
+ * </ul>
+ * 
+ * <p>Usage:
+ * <ul>
+ *   <li>Call {@link #arcadeDrive(double, double)} for teleoperated driving.</li>
+ *   <li>Use {@link #driveRobotRelative(ChassisSpeeds)} for autonomous driving.</li>
+ *   <li>Access odometry data with {@link #getCurrentPose()}.</li>
+ *   <li>Reset encoders and odometry with {@link #resetEncoders()} and {@link #setCurrentPose(Pose2d)}.</li>
+ * </ul>
+ * 
+ * <p>Note: This class implements {@link AutoCloseable} to ensure proper cleanup of hardware resources.
+ */
 public class RomiDrivetrain extends SubsystemBase implements AutoCloseable {
   private static final double MAX_SPEED = 0.5;
   private final RomiGyro gyro = new RomiGyro();
@@ -43,9 +76,12 @@ public class RomiDrivetrain extends SubsystemBase implements AutoCloseable {
   private final Encoder leftEncoder = new Encoder(4, 5);
   private final Encoder rightEncoder = new Encoder(6, 7);
 
-  private final PIDController leftPID = new PIDController(0.4, 0.0, 0.03);
-  private final PIDController rightPID = new PIDController(0.4, 0.0, 0.03);
-  private final SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(0.8, 0.2, 0.0);
+  private final PIDController leftPID = new PIDController(DriveConstants.kP, DriveConstants.kI,
+      DriveConstants.kD);
+   private final PIDController rightPID = new PIDController(DriveConstants.kP, DriveConstants.kI,
+      DriveConstants.kD);
+  private final SimpleMotorFeedforward feedforward = new SimpleMotorFeedforward(DriveConstants.kS, DriveConstants.kV,
+      DriveConstants.kA);
 
   // Kinematics helps us translate between the wheel speeds and the robot speeds
   DifferentialDriveKinematics kinematics = new DifferentialDriveKinematics(0.142);
@@ -59,12 +95,12 @@ public class RomiDrivetrain extends SubsystemBase implements AutoCloseable {
   /** Creates a new RomiDrivetrain. */
   public RomiDrivetrain() {
     // debugging the drive train PID
-    SmartDashboard.putNumber("forwardPID/P", 0.4);
-    SmartDashboard.putNumber("forwardPID/D", 0.0);
-    SmartDashboard.putNumber("forwardPID/I", 0.0);
-    SmartDashboard.putNumber("feedforward/Ks", 0.8);
-    SmartDashboard.putNumber("feedforward/Kv", 0.2);
-    SmartDashboard.putNumber("feedforward/Ka", 0.0);
+    SmartDashboard.putNumber("forwardPID/P", DriveConstants.kP);
+    SmartDashboard.putNumber("forwardPID/D", DriveConstants.kD);
+    SmartDashboard.putNumber("forwardPID/I", DriveConstants.kI);
+    SmartDashboard.putNumber("feedforward/Ks", DriveConstants.kS);
+    SmartDashboard.putNumber("feedforward/Kv", DriveConstants.kV);
+    SmartDashboard.putNumber("feedforward/Ka", DriveConstants.kA);
 
     // Use meters as unit for encoder distances
     leftEncoder.setDistancePerPulse((Math.PI * kWheelDiameterMeters) / kCountsPerRevolution);
@@ -178,14 +214,16 @@ public class RomiDrivetrain extends SubsystemBase implements AutoCloseable {
     final double rightFeedforward = feedforward.calculate(speeds.rightMetersPerSecond);
     final double leftOutput = leftPID.calculate(leftEncoder.getRate(), speeds.leftMetersPerSecond);
     final double rightOutput = rightPID.calculate(rightEncoder.getRate(), speeds.rightMetersPerSecond);
+    SmartDashboard.putNumber("setSpeeds/leftRate", leftEncoder.getRate());
+    SmartDashboard.putNumber("setSpeeds/rightRate", rightEncoder.getRate());
     SmartDashboard.putNumber("setSpeeds/leftRequestedSpeed", speeds.leftMetersPerSecond);
     SmartDashboard.putNumber("setSpeeds/rightRequestedSpeed", speeds.rightMetersPerSecond);
     SmartDashboard.putNumber("setSpeeds/leftOutput", leftOutput);
     SmartDashboard.putNumber("setSpeeds/rightOutput", rightOutput);
     SmartDashboard.putNumber("setSpeeds/leftFeedforward", leftFeedforward);
     SmartDashboard.putNumber("setSpeeds/rightFeedforward", rightFeedforward);
-    leftMotor.set(leftOutput + leftFeedforward);
-    rightMotor.set(rightOutput + rightFeedforward);
+    leftMotor.setVoltage(leftOutput + leftFeedforward);
+    rightMotor.setVoltage(rightOutput + rightFeedforward);
   }
 
   /**
@@ -198,12 +236,11 @@ public class RomiDrivetrain extends SubsystemBase implements AutoCloseable {
    * @param zaxisRotate the rotation rate of the robot in motor % units (-1 to 1)
    */
   public void arcadeDrive(double xaxisSpeed, double zaxisRotate) {
-    SmartDashboard.putNumber("arcadeDrive/xaxisSpeed", xaxisSpeed);
-    SmartDashboard.putNumber("arcadeDrive/zaxisRotate", zaxisRotate);
-    // convert the xaxis speed and zaxis rotate to wheel speeds
     // TODO: If we're 100% forward and turning, does the robot actually turn?
     zaxisRotate = MathUtil.applyDeadband(zaxisRotate, 0.02);
     xaxisSpeed = MathUtil.applyDeadband(xaxisSpeed, 0.02);
+    SmartDashboard.putNumber("arcadeDrive/xaxisSpeed", xaxisSpeed);
+    SmartDashboard.putNumber("arcadeDrive/zaxisRotate", zaxisRotate);
 
     var speeds = kinematics
         .toWheelSpeeds(new ChassisSpeeds(xaxisSpeed * MAX_SPEED, 0, zaxisRotate));
@@ -239,15 +276,15 @@ public class RomiDrivetrain extends SubsystemBase implements AutoCloseable {
   @Override
   public void periodic() {
     // Present the PID settings to SmartDashboard so we can tweak them
-    leftPID.setP(SmartDashboard.getNumber("forwardPID/P", 0.4));
+    leftPID.setP(SmartDashboard.getNumber("forwardPID/P", 0.0));
     leftPID.setD(SmartDashboard.getNumber("forwardPID/D", 0.0));
     leftPID.setI(SmartDashboard.getNumber("forwardPID/I", 0.0));
-    rightPID.setP(SmartDashboard.getNumber("forwardPID/P", 0.4));
+    rightPID.setP(SmartDashboard.getNumber("forwardPID/P", 0.0));
     rightPID.setD(SmartDashboard.getNumber("forwardPID/D", 0.0));
     rightPID.setI(SmartDashboard.getNumber("forwardPID/I", 0.0));
 
-    feedforward.setKs(SmartDashboard.getNumber("feedforward/Ks", 0.8));
-    feedforward.setKv(SmartDashboard.getNumber("feedforward/Kv", 0.2));
+    feedforward.setKs(SmartDashboard.getNumber("feedforward/Ks", 0.0));
+    feedforward.setKv(SmartDashboard.getNumber("feedforward/Kv", 0.0));
     feedforward.setKa(SmartDashboard.getNumber("feedforward/Ka", 0.0));
 
     // Get the rotation of the robot from the gyro.
