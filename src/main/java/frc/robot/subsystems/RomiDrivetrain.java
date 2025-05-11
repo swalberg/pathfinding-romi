@@ -7,6 +7,7 @@ package frc.robot.subsystems;
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPLTVController;
+import com.pathplanner.lib.util.DriveFeedforwards;
 import com.pathplanner.lib.util.PathPlannerLogging;
 
 import edu.wpi.first.math.MathUtil;
@@ -149,7 +150,7 @@ public class RomiDrivetrain extends SubsystemBase implements AutoCloseable {
         this::getCurrentPose, // Robot pose supplier
         this::setCurrentPose, // Method to reset odometry (will be called if your auto has a starting pose)
         this::getRobotRelativeSpeeds, // ChassisSpeeds supplier. MUST BE ROBOT RELATIVE
-        (speeds, feedforwards) -> driveRobotRelative(speeds), // Method that will drive the robot given ROBOT RELATIVE
+        (speeds, feedforwards) -> driveRobotRelative(speeds, feedforwards), // Method that will drive the robot given ROBOT RELATIVE
                                                               // ChassisSpeeds. Also optionally outputs individual
                                                               // module feedforwards
         new PPLTVController(0.02, MAX_SPEED), // PPLTVController is the built in path following controller for differential
@@ -193,12 +194,13 @@ public class RomiDrivetrain extends SubsystemBase implements AutoCloseable {
    * @param speeds a ChassisSpeeds object representing the speed of the robot in
    *               meters per second
    */
-  public void driveRobotRelative(ChassisSpeeds speeds) {
+  public void driveRobotRelative(ChassisSpeeds speeds, DriveFeedforwards feedforwards) {
+    final double fudgeFactor = 0.7;
     // concert the chassis speeds to wheel speeds
     var wheelSpeeds = kinematics.toWheelSpeeds(speeds);
     // limit the wheel speeds to the max speed
-    wheelSpeeds.leftMetersPerSecond = MathUtil.clamp(wheelSpeeds.leftMetersPerSecond, -MAX_SPEED, MAX_SPEED);
-    wheelSpeeds.rightMetersPerSecond = MathUtil.clamp(wheelSpeeds.rightMetersPerSecond, -MAX_SPEED, MAX_SPEED);
+    wheelSpeeds.leftMetersPerSecond = MathUtil.clamp(wheelSpeeds.leftMetersPerSecond * fudgeFactor, -MAX_SPEED, MAX_SPEED);
+    wheelSpeeds.rightMetersPerSecond = MathUtil.clamp(wheelSpeeds.rightMetersPerSecond * fudgeFactor, -MAX_SPEED, MAX_SPEED);
     // set the wheel speeds
     setSpeeds(wheelSpeeds);
   }
