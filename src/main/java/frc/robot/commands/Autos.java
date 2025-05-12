@@ -1,6 +1,7 @@
 package frc.robot.commands;
 
 import java.util.List;
+import java.util.Optional;
 
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.path.GoalEndState;
@@ -12,19 +13,36 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
 
 public class Autos {
-    public static Command driveStraightPath() {
+    public static Command driveToPose(Pose2d pose) {
         PathConstraints constraints = new PathConstraints(
             0.25, 0.25,
             3, Units.degreesToRadians(720));
     
         // Since AutoBuilder is configured, we can use it to build pathfinding commands
         return AutoBuilder.pathfindToPose(
-            new Pose2d(1, 0, new Rotation2d()),
+            pose,
             constraints,
             edu.wpi.first.units.Units.MetersPerSecond.of(0) // Goal end velocity in meters/sec
         );
+    }
+
+    /**
+     * Drive to a pose, or do nothing if the pose is empty
+     * @param pose - an Optional containing a Pose2d
+     * @return a Command to drive
+     */
+    public static Command driveToPose(Optional<Pose2d> pose) {
+        if (pose.isPresent()) {
+            return driveToPose(pose.get());
+        }
+        return Commands.none();
+    }
+
+    public static Command driveStraightPath() {
+        return driveToPose(new Pose2d(1, 0, new Rotation2d()));
     }
 
     public static Command waypoints() {
