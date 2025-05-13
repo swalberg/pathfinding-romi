@@ -5,6 +5,7 @@
 package frc.robot;
 
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.XboxController;
 import frc.robot.commands.Autos;
@@ -50,8 +51,9 @@ public class RobotContainer implements AutoCloseable {
    */
   public Command getAutonomousCommand() {
     // An ExampleCommand will run in autonomous
-    // return new InstantCommand(() -> m_romiDrivetrain.setCurrentPose(new Pose2d())).andThen(Autos.driveStraightPath());
-    return (DriverAssist.driveToLeftOfSeenReef(m_romiDrivetrain::getTransformToTarget, m_romiDrivetrain::getCurrentPose));
+    return new InstantCommand(() -> m_romiDrivetrain.setCurrentPose(new Pose2d())).andThen(DriverAssist.driveToPose(new Pose2d(1.0, 0.0, new Rotation2d())));
+    //return (DriverAssist.driveToLeftOfSeenReef(m_romiDrivetrain::getTransformToTarget, m_romiDrivetrain::getCurrentPose));
+
   }
 
   @Override
